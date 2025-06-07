@@ -20,11 +20,11 @@ st.markdown("Upload your transaction data and budget categories to get insights 
 st.sidebar.header("Upload Your Files")
 
 uploaded_transactions_file = st.sidebar.file_uploader(
-    "Upload Transaction File (ViewTxns_XLS07-06-2025.xls - ViewTxns_XLS.csv)",
+    "Upload Transaction File (e.g., ViewTxns_XLS.csv)",
     type=["csv"]
 )
 uploaded_budget_categories_file = st.sidebar.file_uploader(
-    "Upload Budget Categories File (Budget Category.xlsx - Sheet1.csv)",
+    "Upload Budget Categories File (e.g., Budget Category.csv)",
     type=["csv"]
 )
 
@@ -52,9 +52,10 @@ if transactions_df is not None and budget_categories_df is not None:
     st.header("1. Data Processing and Categorization")
 
     # --- Standardize Column Names ---
-    # New expected transaction columns based on the image provided
+    # Expected transaction columns
     EXPECTED_TRANSACTION_COLS = ['Date', 'Description', 'Money In (€)', 'Money Out (€)']
-    EXPECTED_BUDGET_COLS = ['Category', 'Code'] # Keywords is assumed for mapping
+    # NEW: Updated expected budget columns, removing 'Code'
+    EXPECTED_BUDGET_COLS = ['Category', 'Keywords'] 
 
     # Check for expected columns in transactions_df
     missing_transaction_cols = [col for col in EXPECTED_TRANSACTION_COLS if col not in transactions_df.columns]
@@ -68,11 +69,10 @@ if transactions_df is not None and budget_categories_df is not None:
     missing_budget_cols = [col for col in EXPECTED_BUDGET_COLS if col not in budget_categories_df.columns]
     if missing_budget_cols:
         st.error(f"Budget categories file is missing expected columns: {', '.join(missing_budget_cols)}. "
-                 "Please ensure your budget file has 'Category' and 'Code' columns, "
-                 "and optionally a 'Keywords' column for automatic mapping, "
+                 "Please ensure your budget file has 'Category' and 'Keywords' columns, "
                  "or adjust the code to match your column names.")
         st.stop() # Stop execution if critical columns are missing
-
+    
     # Convert 'Date' column to datetime objects
     try:
         transactions_df['Date'] = pd.to_datetime(transactions_df['Date'])
@@ -101,49 +101,26 @@ if transactions_df is not None and budget_categories_df is not None:
     # --- Transaction Mapping Function ---
     def map_transaction_to_category(description, budget_df):
         """
-        Maps a transaction description to a budget category code based on keywords.
-        Assumes budget_df has 'Category', 'Code', and 'Keywords' columns.
+        Maps a transaction description to a budget category based on keywords.
+        Assumes budget_df has 'Category' and 'Keywords' columns.
         'Keywords' should be a comma-separated string of terms for a category.
         """
         description_lower = description.lower()
         for index, row in budget_df.iterrows():
-            category_keywords = row.get('Keywords') # .get() for safer access
-            if pd.isna(category_keywords): # Handle NaN keywords
+            category_keywords = row.get('Keywords') 
+            if pd.isna(category_keywords): 
                 continue
             keywords_list = [k.strip().lower() for k in str(category_keywords).split(',') if k.strip()]
             for keyword in keywords_list:
                 if keyword in description_lower:
-                    return row['Code'] # Return the Code for the matched category
+                    return row['Category'] # Return the Category name directly
         return "Uncategorized" # If no keyword matches
 
-    # Create a dummy 'Keywords' column if it doesn't exist, for demonstration purposes.
-    # In a real scenario, the user *must* provide this column in their budget file.
-    if 'Keywords' not in budget_categories_df.columns:
-        st.warning("No 'Keywords' column found in Budget Categories file. "
-                   "Automatic mapping will be limited. Please consider adding a 'Keywords' "
-                   "column to your 'Budget Category.xlsx - Sheet1.csv' file for better mapping. "
-                   "For now, only a simple direct match (if description exactly matches category) will occur.")
-        # Basic fallback: if description exactly matches category name (less robust)
-        budget_categories_df['Keywords'] = budget_categories_df['Category'].str.lower()
-        
     # Apply mapping
-    transactions_df['Budget_Code'] = transactions_df['Description'].apply(
+    # The 'Budget_Code' temporary column is no longer needed as 'Category' is directly mapped
+    transactions_df['Mapped_Category'] = transactions_df['Description'].apply(
         lambda x: map_transaction_to_category(x, budget_categories_df)
     )
-
-    # Merge with budget categories to get category names
-    transactions_df = pd.merge(
-        transactions_df,
-        budget_categories_df[['Code', 'Category']],
-        left_on='Budget_Code',
-        right_on='Code',
-        how='left',
-        suffixes=('_txn', '_budget')
-    ).drop(columns=['Code_budget']) # Drop the redundant 'Code_budget' column
-
-    # Rename 'Category_budget' to a more descriptive name if it exists, else use 'Uncategorized'
-    transactions_df['Mapped_Category'] = transactions_df['Category_budget'].fillna('Uncategorized')
-    transactions_df.drop(columns=['Category_txn', 'Budget_Code'], inplace=True, errors='ignore') # Clean up temp cols
 
     st.subheader("Mapped Transactions Preview")
     st.dataframe(transactions_df.head())
