@@ -35,47 +35,55 @@ budget_categories_df = None
 if uploaded_transactions_file:
     try:
         transactions_df = pd.read_csv(uploaded_transactions_file)
+        # --- Clean column names: strip whitespace and convert to lowercase for robust matching ---
+        transactions_df.columns = transactions_df.columns.str.strip()
         st.sidebar.success("Transaction file loaded successfully!")
         st.sidebar.dataframe(transactions_df.head()) # Show a preview
+        st.sidebar.info(f"Transaction file columns detected: {list(transactions_df.columns)}") # Debugging info
     except Exception as e:
         st.sidebar.error(f"Error loading transaction file: {e}")
 
 if uploaded_budget_categories_file:
     try:
         budget_categories_df = pd.read_csv(uploaded_budget_categories_file)
+        # --- Clean column names: strip whitespace and convert to lowercase for robust matching ---
+        budget_categories_df.columns = budget_categories_df.columns.str.strip()
         st.sidebar.success("Budget categories file loaded successfully!")
         st.sidebar.dataframe(budget_categories_df.head()) # Show a preview
+        st.sidebar.info(f"Budget categories file columns detected: {list(budget_categories_df.columns)}") # Debugging info
     except Exception as e:
         st.sidebar.error(f"Error loading budget categories file: {e}")
 
 if transactions_df is not None and budget_categories_df is not None:
     st.header("1. Data Processing and Categorization")
 
-    # --- Standardize Column Names ---
-    # Expected transaction columns
+    # --- Standardize Column Names (Expected after cleaning) ---
+    # Expected transaction columns (original case matters for accessing data)
     EXPECTED_TRANSACTION_COLS = ['Date', 'Description', 'Money In (€)', 'Money Out (€)']
-    # NEW: Updated expected budget columns, removing 'Code'
+    # Expected budget columns (original case matters for accessing data)
     EXPECTED_BUDGET_COLS = ['Category', 'Keywords'] 
 
-    # Check for expected columns in transactions_df
+    # Check for expected columns in transactions_df (using the original names)
+    # The check now uses the cleaned column names for comparison, but refers to original for user error message
     missing_transaction_cols = [col for col in EXPECTED_TRANSACTION_COLS if col not in transactions_df.columns]
     if missing_transaction_cols:
         st.error(f"Transaction file is missing expected columns: {', '.join(missing_transaction_cols)}. "
                  "Please ensure your transaction file has 'Date', 'Description', 'Money In (€)', and 'Money Out (€)' columns, "
-                 "or adjust the code to match your column names.")
+                 "or adjust the code to match your column names exactly, including case and any leading/trailing spaces.")
         st.stop() # Stop execution if critical columns are missing
 
-    # Check for expected columns in budget_categories_df
+    # Check for expected columns in budget_categories_df (using the original names)
     missing_budget_cols = [col for col in EXPECTED_BUDGET_COLS if col not in budget_categories_df.columns]
     if missing_budget_cols:
         st.error(f"Budget categories file is missing expected columns: {', '.join(missing_budget_cols)}. "
                  "Please ensure your budget file has 'Category' and 'Keywords' columns, "
-                 "or adjust the code to match your column names.")
+                 "or adjust the code to match your column names exactly, including case and any leading/trailing spaces.")
         st.stop() # Stop execution if critical columns are missing
     
     # Convert 'Date' column to datetime objects
     try:
-        transactions_df['Date'] = pd.to_datetime(transactions_df['Date'])
+        transactions_df['Date'] = pd.to_datetime(transactions_df['Date'], errors='coerce')
+        transactions_df.dropna(subset=['Date'], inplace=True) # Remove rows with invalid dates
     except Exception as e:
         st.error(f"Could not convert 'Date' column to datetime. Please ensure it's in a recognizable date format. Error: {e}")
         st.stop()
@@ -117,7 +125,6 @@ if transactions_df is not None and budget_categories_df is not None:
         return "Uncategorized" # If no keyword matches
 
     # Apply mapping
-    # The 'Budget_Code' temporary column is no longer needed as 'Category' is directly mapped
     transactions_df['Mapped_Category'] = transactions_df['Description'].apply(
         lambda x: map_transaction_to_category(x, budget_categories_df)
     )
@@ -360,3 +367,4 @@ if transactions_df is not None and budget_categories_df is not None:
 
 else:
     st.info("Please upload both your Transaction File and Budget Categories File to get started.")
+
