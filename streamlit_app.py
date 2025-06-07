@@ -51,20 +51,16 @@ if uploaded_budget_categories_file:
 if transactions_df is not None and budget_categories_df is not None:
     st.header("1. Data Processing and Categorization")
 
-    # --- Standardize Column Names (User might need to adjust these) ---
-    # Assuming standard column names for transactions: Date, Description, Amount
-    # Assuming standard column names for budget: Category, Code, Keywords
-    # User will need to adjust these if their CSVs have different headers
-    
-    # Common column names expected
-    EXPECTED_TRANSACTION_COLS = ['Date', 'Description', 'Amount']
+    # --- Standardize Column Names ---
+    # New expected transaction columns based on the image provided
+    EXPECTED_TRANSACTION_COLS = ['Date', 'Description', 'Money In (€)', 'Money Out (€)']
     EXPECTED_BUDGET_COLS = ['Category', 'Code'] # Keywords is assumed for mapping
 
     # Check for expected columns in transactions_df
     missing_transaction_cols = [col for col in EXPECTED_TRANSACTION_COLS if col not in transactions_df.columns]
     if missing_transaction_cols:
         st.error(f"Transaction file is missing expected columns: {', '.join(missing_transaction_cols)}. "
-                 "Please ensure your transaction file has 'Date', 'Description', and 'Amount' columns, "
+                 "Please ensure your transaction file has 'Date', 'Description', 'Money In (€)', and 'Money Out (€)' columns, "
                  "or adjust the code to match your column names.")
         st.stop() # Stop execution if critical columns are missing
 
@@ -84,13 +80,17 @@ if transactions_df is not None and budget_categories_df is not None:
         st.error(f"Could not convert 'Date' column to datetime. Please ensure it's in a recognizable date format. Error: {e}")
         st.stop()
 
-    # Convert 'Amount' to numeric, handling potential non-numeric entries
-    try:
-        transactions_df['Amount'] = pd.to_numeric(transactions_df['Amount'], errors='coerce')
-        transactions_df.dropna(subset=['Amount'], inplace=True) # Drop rows where Amount is not a number
-    except Exception as e:
-        st.error(f"Could not convert 'Amount' column to numeric. Please ensure it contains valid numbers. Error: {e}")
-        st.stop()
+    # --- Derive 'Amount' column from 'Money In (€)' and 'Money Out (€)' ---
+    # Convert 'Money In (€)' and 'Money Out (€)' to numeric, handling missing values and currency symbols
+    # Fill NaN with 0 for calculation
+    for col in ['Money In (€)', 'Money Out (€)']:
+        transactions_df[col] = pd.to_numeric(
+            transactions_df[col].astype(str).str.replace('€', '').str.replace(',', '').str.strip(),
+            errors='coerce'
+        ).fillna(0)
+
+    transactions_df['Amount'] = transactions_df['Money In (€)'] - transactions_df['Money Out (€)']
+    transactions_df.dropna(subset=['Amount'], inplace=True) # Drop rows where calculated Amount is not a number
 
     # Determine 'Type' (Income or Expense) based on Amount
     transactions_df['Type'] = transactions_df['Amount'].apply(lambda x: 'Income' if x > 0 else 'Expense')
@@ -383,4 +383,3 @@ if transactions_df is not None and budget_categories_df is not None:
 
 else:
     st.info("Please upload both your Transaction File and Budget Categories File to get started.")
-
