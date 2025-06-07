@@ -97,7 +97,8 @@ if transactions_df is not None and budget_categories_df is not None:
             errors='coerce'
         ).fillna(0)
 
-    transactions_df['Amount'] = transactions_df['Money In (€)'] - transactions_df['Money Out (€)']
+    # *** FIX: Changed calculation to correctly interpret Money Out (€) as a negative value ***
+    transactions_df['Amount'] = transactions_df['Money In (€)'] + transactions_df['Money Out (€)'] 
     transactions_df.dropna(subset=['Amount'], inplace=True) # Drop rows where calculated Amount is not a number
 
     # Determine 'Type' (Income or Expense) based on Amount
@@ -230,14 +231,23 @@ if transactions_df is not None and budget_categories_df is not None:
                 </thead>
                 <tbody>
         """
-        for index, row in monthly_summary.iterrows():
-            net_balance = row['Income'] - row['Expense_Abs']
-            html_content += f"""
+        # Ensure monthly_summary has 'Income' and 'Expense_Abs' columns before iterating
+        # This prevents errors if monthly_summary is empty or missing columns
+        if not monthly_summary.empty:
+            for index, row in monthly_summary.iterrows():
+                net_balance = row.get('Income', 0) - row.get('Expense_Abs', 0)
+                html_content += f"""
+                        <tr>
+                            <td>{index}</td>
+                            <td>{row.get('Income', 0):.2f}</td>
+                            <td>{row.get('Expense_Abs', 0):.2f}</td>
+                            <td class="{'income' if net_balance >= 0 else 'expense'}">{net_balance:.2f}</td>
+                        </tr>
+                """
+        else:
+            html_content += """
                     <tr>
-                        <td>{index}</td>
-                        <td>{row['Income']:.2f}</td>
-                        <td>{row['Expense_Abs']:.2f}</td>
-                        <td class="{'income' if net_balance >= 0 else 'expense'}">{net_balance:.2f}</td>
+                        <td colspan="4">No monthly summary data to display.</td>
                     </tr>
             """
         html_content += """
@@ -254,7 +264,7 @@ if transactions_df is not None and budget_categories_df is not None:
                 </thead>
                 <tbody>
         """
-        if not expense_by_category.empty:
+        if not expense_by_category.empty: # Check if expense_by_category is not empty
             for category, amount in expense_by_category.items():
                 html_content += f"""
                     <tr>
@@ -286,8 +296,15 @@ if transactions_df is not None and budget_categories_df is not None:
                 <tbody>
         """
         # Convert DataFrame to HTML table (can be customized)
-        transactions_html_table = transactions_df[['Date', 'Description', 'Amount', 'Type', 'Mapped_Category']].to_html(index=False, float_format='%.2f')
-        html_content += transactions_html_table.replace('<thead>', '').replace('</thead>', '').replace('<tbody>', '').replace('</tbody>', '').replace('<table>', '').replace('</table>', '')
+        if not transactions_df.empty:
+            transactions_html_table = transactions_df[['Date', 'Description', 'Amount', 'Type', 'Mapped_Category']].to_html(index=False, float_format='%.2f')
+            html_content += transactions_html_table.replace('<thead>', '').replace('</thead>', '').replace('<tbody>', '').replace('</tbody>', '').replace('<table>', '').replace('</table>', '')
+        else:
+            html_content += """
+                    <tr>
+                        <td colspan="5">No transactions to display.</td>
+                    </tr>
+            """
         
         html_content += """
                 </tbody>
@@ -296,15 +313,19 @@ if transactions_df is not None and budget_categories_df is not None:
         </html>
         """
         return html_content
-
-    html_report = generate_html_report(transactions_df, monthly_summary, expense_by_category)
     
-    st.download_button(
-        label="Download Full Financial Report as HTML",
-        data=html_report,
-        file_name="financial_report.html",
-        mime="text/html"
-    )
+    # Check before generating report
+    if not transactions_df.empty:
+        html_report = generate_html_report(transactions_df, monthly_summary, expense_by_category)
+        
+        st.download_button(
+            label="Download Full Financial Report as HTML",
+            data=html_report,
+            file_name="financial_report.html",
+            mime="text/html"
+        )
+    else:
+        st.info("Upload transaction data to generate a report.")
 
     # --- Projected Analysis (Machine Learning Algo Placeholder) ---
     st.header("5. Projected Analysis of Money In and Out")
